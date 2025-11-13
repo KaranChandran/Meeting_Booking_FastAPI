@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, validator
-from datetime import date, time
+from datetime import date, time, datetime
 from database import get_connection, sqlite3
 
 app = FastAPI()
@@ -13,19 +13,19 @@ class Booking(BaseModel):
 
 
 
-#Validator: do not allow past dates
-@validator("date")
-def prevent_past_date(cls, value):
-    if value < date.today():
-        raise ValueError("Cannot book past dates!")
-    return value
+    #Validator: do not allow past dates
+    @validator("date")
+    def prevent_past_date(cls, value):
+        if value < date.today():
+            raise ValueError("Cannot book past dates!")
+        return value
 
-#Validator: restrict time to 08:00–20:00 for real-world booking
-@validator("time")
-def valid_time_range(cls, value):
-    if value < time(8, 0) or value > time(20, 0):#8:00AM to 8:00PM
-        raise ValueError("Booking allowed only between 08:00 and 20:00")
-    return value
+    #Validator: restrict time to 08:00–20:00 for real-world booking
+    @validator("time")
+    def valid_time_range(cls, value):
+        if value < time(8, 0) or value > time(20, 0):#8:00AM to 8:00PM
+            raise ValueError("Booking allowed only between 08:00 and 20:00")
+        return value
 
 
 #Create Booking
@@ -57,8 +57,10 @@ def get_bookings(
     page: int = 1,
     limit: int = 5,
     date_filter: str | None = None,          #filter by specific date (YYYY-MM-DD)
-    customer: str | None = None              #filter by customer name (partial allowed)
+    customer: str | None = None            #filter by customer name (partial allowed)
+    
 ):
+    
     #Validate pagination input
     if page < 1 or limit < 1:
         raise HTTPException(status_code=400, detail="page & limit must be positive numbers.")
@@ -74,10 +76,12 @@ def get_bookings(
 
     #Filter by date (exact match)
     if date_filter:
-        where_clauses.append("date = ?")
-        params.append(date_filter)
-    else:
-        raise HTTPException(status_code=400, detail="Invalid date format | use this YYYY-MM-DD")
+        try:
+            valid_date = datetime.strptime(date_filter, "%Y-%m-%d").date()
+            where_clauses.append("date = ?")
+            params.append(date_filter)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format | use this YYYY-MM-DD")
 
 
     #Filter by customer name (partial search)
@@ -115,21 +119,42 @@ def get_bookings(
         "bookings": [dict(row) for row in rows]
     }
 
-#Get Single Booking
-@app.get("/bookings/{booking_id}")
-def get_booking(booking_id: int):
+#search by ID or NAME
+@app.get("/bookings/{search_value}")
+def get_booking(search_value : str):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
-    row = cursor.fetchone()
-    conn.close()
+    try:
+        booking_id = int(search_value)
+        cursor.execute("SELECT * FROM bookings WHERE id = ?",(booking_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Booking not found")
+        
+        #return single row for ID
+        return {"search_type": "id", "result": dict(row)}
 
-    if not row:
-        raise HTTPException(status_code=404, detail="Booking not found")
+    except ValueError:
+        cursor.execute("""
+        SELECT * FROM bookings
+        WHERE LOWER(customer_name) LIKE LOWER(?)
+        """,(f"%{search_value}%",))
 
-    return dict(row)
+        rows = cursor.fetchall()
 
+        if not rows:
+            raise HTTPException(status_code=404, detail="Booking Not Found That Name... | Try Again..")
+        
+        #return multiple result(for name)
+        return{
+                "search_type": "name",
+                "total_results": len(rows),
+                "results": [dict(row) for row in rows]
+        }
+    finally:
+        conn.close()
 
 # Update Booking
 @app.put("/bookings/{booking_id}")
