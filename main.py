@@ -51,18 +51,69 @@ def create_booking(b: Booking):
             "data": b}
 
 
-#Get All Bookings
+#Pagination + Filtering by date and customer_name
 @app.get("/bookings")
-def get_bookings():
+def get_bookings(
+    page: int = 1,
+    limit: int = 5,
+    date_filter: str | None = None,          #filter by specific date (YYYY-MM-DD)
+    customer: str | None = None              #filter by customer name (partial allowed)
+):
+    #Validate pagination input
+    if page < 1 or limit < 1:
+        raise HTTPException(status_code=400, detail="page & limit must be positive numbers.")
+
+    offset = (page - 1) * limit
+
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM bookings")
+    #Build the WHERE conditions dynamically
+    where_clauses = []
+    params = []
+
+    #Filter by date (exact match)
+    if date_filter:
+        where_clauses.append("date = ?")
+        params.append(date_filter)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid date format | use this YYYY-MM-DD")
+
+
+    #Filter by customer name (partial search)
+    if customer:
+        where_clauses.append("customer_name LIKE ?")
+        params.append(f"%{customer}%")  # partial match
+        #raise HTTPException(status_code=400, detail="Invalid coustomer name | Try again..!")
+
+    #If filters exist, join with AND
+    where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+
+    #1) Count total filtered records
+    count_query = f"SELECT COUNT(*) FROM bookings{where_sql}"
+    cursor.execute(count_query, params)
+    total = cursor.fetchone()[0]
+
+    #2) Fetch paginated + filtered results
+    data_query = f"""
+        SELECT * FROM bookings
+        {where_sql}
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
+    """
+
+    cursor.execute(data_query, (*params, limit, offset))
+
     rows = cursor.fetchall()
     conn.close()
 
-    return {"bookings": [dict(row) for row in rows]}
-
+    return {
+        "total_records": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total + limit - 1) // limit,
+        "bookings": [dict(row) for row in rows]
+    }
 
 #Get Single Booking
 @app.get("/bookings/{booking_id}")
