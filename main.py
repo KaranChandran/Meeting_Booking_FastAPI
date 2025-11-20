@@ -38,18 +38,17 @@ def create_booking(b: Booking):
         cursor.execute("""
             INSERT INTO bookings (customer_name, date, time, description)
             VALUES (?, ?, ?, ?)""", (b.customer_name, str(b.date), str(b.time), b.description))
+    
+        conn.commit()
+        booking_id = cursor.lastrowid
+        return {"message": "Your Booking Is Created Successfully..!", 
+            "booking_id": booking_id, "data": b}
+    
     except sqlite3.IntegrityError:
-        conn.close()
         raise HTTPException(status_code=400, detail="This slot is already booked!")
 
-    conn.commit()
-    booking_id = cursor.lastrowid
-    conn.close()
-
-    return {"message": "Your Booking Is Created Successfully..!", 
-            "booking_id": booking_id, 
-            "data": b}
-
+    finally:
+        conn.close()
 
 #Pagination + Filtering by date and customer_name
 @app.get("/bookings")
@@ -88,13 +87,20 @@ def get_bookings(
     if customer:
         where_clauses.append("customer_name LIKE ?")
         params.append(f"%{customer}%")  # partial match
-        #raise HTTPException(status_code=400, detail="Invalid coustomer name | Try again..!")
 
-    #If filters exist, join with AND
-    where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+    #If filters exist, join with AND----Build where clause
+    where_sql = ""
+    if where_clauses:
+        where_sql = " WHERE " + " AND ".join(where_clauses)
+    
+    cursor.execute(f"SELECT * FROM bookings{where_sql}", params)
+    rows = cursor.fetchall()
+    
+    if customer and not rows:
+        raise HTTPException(status_code=400, detail="Invalid coustomer name | Try again..!")
 
     #1) Count total filtered records
-    count_query = f"SELECT COUNT(*) FROM bookings{where_sql}"
+    count_query = (f"SELECT COUNT(*) FROM bookings{where_sql}")
     cursor.execute(count_query, params)
     total = cursor.fetchone()[0]
 
@@ -120,7 +126,7 @@ def get_bookings(
     }
 
 #search by ID or NAME
-@app.get("/bookings/{search_value}")
+@app.get("/bookings/search/{search_value}")
 def get_booking(search_value : str):
     conn = get_connection()
     cursor = conn.cursor()
@@ -172,13 +178,14 @@ def update_booking(booking_id: int, b: Booking):
             UPDATE bookings
             SET customer_name=?, date=?, time=?, description=?
             WHERE id=?""", (b.customer_name, str(b.date), str(b.time), b.description, booking_id))
+        conn.commit()
+
     except sqlite3.IntegrityError:
         conn.close()
         raise HTTPException(status_code=400, detail="Slot already booked!")
-
-
-    conn.commit()
-    conn.close()
+    
+    finally:
+        conn.close()
 
     return {"message": "Your Booking Is Updated Successfully...!", "data": b}
 
