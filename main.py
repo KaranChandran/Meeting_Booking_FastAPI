@@ -23,6 +23,9 @@ class Booking(BaseModel):
     #Validator: restrict time to 08:00–20:00 for real-world booking
     @validator("time")
     def valid_time_range(cls, value):
+        if value.tzinfo is not None:
+            value = value.replace(tzinfo=None)
+
         if value < time(8, 0) or value > time(20, 0):#8:00AM to 8:00PM
             raise ValueError("Booking allowed only between 08:00 and 20:00")
         return value
