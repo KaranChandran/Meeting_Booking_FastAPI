@@ -1,0 +1,185 @@
+from fastapi import APIRouter, HTTPException
+from models.models import Booking
+from database import get_connection, sqlite3
+from datetime import datetime
+
+router = APIRouter(prefix="/v1/bookings", tags=["Bookings - v1"])
+
+#Create Booking
+@router.post("")
+def create_booking(b: Booking):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            INSERT INTO bookings (customer_name, date, time, description)
+            VALUES (?, ?, ?, ?)""", (b.customer_name, str(b.date), str(b.time), b.description))
+    
+        conn.commit()
+        booking_id = cursor.lastrowid
+        return {"message": "Your Booking Is Created Successfully..!", 
+            "booking_id": booking_id, "data": b}
+    
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="This slot is already booked!")
+
+    finally:
+        conn.close()
+
+#Pagination + Filtering by date and customer_name
+@router.get("")
+def get_bookings(
+    page: int = 1,
+    limit: int = 5,
+    date_filter: str | None = None,          #filter by specific date (YYYY-MM-DD)
+    customer: str | None = None            #filter by customer name (partial allowed)
+    
+):
+    
+    #Validate pagination input
+    if page < 1 or limit < 1:
+        raise HTTPException(status_code=400, detail="page & limit must be positive numbers.")
+
+    offset = (page - 1) * limit
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    #Build the WHERE conditions dynamically
+    where_clauses = []
+    params = []
+
+    #Filter by date (exact match)
+    if date_filter:
+        try:
+            valid_date = datetime.strptime(date_filter, "%Y-%m-%d").date()
+            where_clauses.append("date = ?")
+            params.append(date_filter)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format | use this YYYY-MM-DD")
+
+
+    #Filter by customer name (partial search)
+    if customer:
+        where_clauses.append("customer_name LIKE ?")
+        params.append(f"%{customer}%")  # partial match
+
+    #If filters exist, join with AND----Build where clause
+    where_sql = ""
+    if where_clauses:
+        where_sql = " WHERE " + " AND ".join(where_clauses)
+    
+    cursor.execute(f"SELECT * FROM bookings{where_sql}", params)
+    rows = cursor.fetchall()
+    
+    if customer and not rows:
+        raise HTTPException(status_code=400, detail="Invalid coustomer name | Try again..!")
+
+    #1) Count total filtered records
+    count_query = (f"SELECT COUNT(*) FROM bookings{where_sql}")
+    cursor.execute(count_query, params)
+    total = cursor.fetchone()[0]
+
+    #2) Fetch paginated + filtered results
+    data_query = f"""
+        SELECT * FROM bookings
+        {where_sql}
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
+    """
+
+    cursor.execute(data_query, (*params, limit, offset))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return {
+        "total_records": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total + limit - 1) // limit,
+        "bookings": [dict(row) for row in rows]
+    }
+
+#search by ID or NAME
+@router.get("/search/{search_value}")
+def get_booking(search_value : str):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        booking_id = int(search_value)
+        cursor.execute("SELECT * FROM bookings WHERE id = ?",(booking_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Booking not found")
+        
+        #return single row for ID
+        return {"search_type": "id", "result": dict(row)}
+
+    except ValueError:
+        cursor.execute("""
+        SELECT * FROM bookings
+        WHERE LOWER(customer_name) LIKE LOWER(?)
+        """,(f"%{search_value}%",))
+
+        rows = cursor.fetchall()
+
+        if not rows:
+            raise HTTPException(status_code=404, detail="Booking Not Found That Name... | Try Again..")
+        
+        #return multiple result(for name)
+        return{
+                "search_type": "name",
+                "total_results": len(rows),
+                "results": [dict(row) for row in rows]
+        }
+    finally:
+        conn.close()
+
+# Update Booking
+@router.put("/{booking_id}")
+def update_booking(booking_id: int, b: Booking):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    try:
+        cursor.execute("""
+            UPDATE bookings
+            SET customer_name=?, date=?, time=?, description=?
+            WHERE id=?""", (b.customer_name, str(b.date), str(b.time), b.description, booking_id))
+        conn.commit()
+
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Slot already booked!")
+    
+    finally:
+        conn.close()
+
+    return {"message": "Your Booking Is Updated Successfully...!", "data": b}
+
+
+#Cancel Booking
+@router.delete("{booking_id}")
+def delete_booking(booking_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    cursor.execute("DELETE FROM bookings WHERE id = ?", (booking_id,))
+    conn.commit()
+    conn.close()
+
+    return {"message": "Your Booking Is Canceled Successfully...!"}
