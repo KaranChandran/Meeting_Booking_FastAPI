@@ -14,15 +14,15 @@ def create_booking(b: Booking):
 
     try:
         cursor.execute("""
-            INSERT INTO bookings (customer_name, date, time, description)
-            VALUES (?, ?, ?, ?)""", (b.customer_name, str(b.date), str(b.time), b.description))
+            INSERT INTO bookings (customer_name, customer_email, customer_phone, date, time, description)
+            VALUES (?, ?, ?, ?, ?, ?)""", (b.customer_name, b.customer_email, b.customer_phone, str(b.date), str(b.time), b.description))
     
         conn.commit()
         
         booking_id = cursor.lastrowid
         logger.info(f"New booking created with ID: {booking_id} for customer: {b.customer_name} on {b.date} at {b.time}")
-        return {"message": "Your Booking Is Created Successfully..!", 
-                "booking_id": booking_id, "data": b}
+        return {"status": "success", 
+                "booking_id": booking_id, "message":"Your Booking Is Created Successfully..!", "info": b}
     
     except sqlite3.IntegrityError:
         logger.error(f"Failed to create booking for customer: {b.customer_name} on {b.date} at {b.time} - Slot already booked")
@@ -167,7 +167,8 @@ def update_booking(booking_id: int, b: Booking):
     cursor = conn.cursor()
 
     cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
-    if not cursor.fetchone():
+    old = cursor.fetchone()
+    if not old:
         conn.close()
         logger.warning(f"Booking not found for update with ID: {booking_id}")
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -176,8 +177,8 @@ def update_booking(booking_id: int, b: Booking):
         logger.info(f"Updating booking with ID: {booking_id}")
         cursor.execute("""
             UPDATE bookings
-            SET customer_name=?, date=?, time=?, description=?
-            WHERE id=?""", (b.customer_name, str(b.date), str(b.time), b.description, booking_id))
+            SET customer_name=?, customer_email=?, customer_phone=?, date=?, time=?, description=?, version=version+1, updated_at=CURRENT_TIMESTAMP
+            WHERE id=?""", (b.customer_name, b.customer_email, b.customer_phone, str(b.date), str(b.time), b.description, booking_id))
         conn.commit()
 
     except sqlite3.IntegrityError:
@@ -189,7 +190,20 @@ def update_booking(booking_id: int, b: Booking):
         conn.close()
 
     logger.info(f"Booking with ID: {booking_id} updated successfully")
-    return {"message": "Your Booking Is Updated Successfully...!", "data": b}
+    return{
+            "status": "success",
+            "info": {
+                "booking_id": ["id"],
+                "customer_name":["customer_name"],
+                "customer_email": ["customer_email"],
+                "customer_phone": ["customer_phone"],
+                "date": ["date"],
+                "time": ["time"],
+                "description": ["description"],
+                "version": ["version"],
+                "updated_at": ["updated_at"]
+            }
+        }
 
 
 #Cancel Booking
