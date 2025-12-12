@@ -1,40 +1,35 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional
 from datetime import date, time
-from logger import logger
-import re
+from email_validator import validate_email, EmailNotValidError
 
 class Booking(BaseModel):
-    customer_name: str
-    customer_email: str
-    customer_phone: int
-    date: date        # Validates YYYY-MM-DD
-    time: time        # Validates HH:MM (24-hour)
-    description: str | None = None
-    version: int = 1  # For optimistic locking
+    customer_name: str = Field(..., min_length=2, max_length=100, pattern=r"^[A-Za-z]+([ '-][A-Za-z]+)*$")
+    customer_email: str = Field(..., max_length=255)
+    customer_phone: str = Field(..., max_length=15, pattern=r"^\+?[1-9]\d{9,14}$")
+    date: date
+    time: time
+    description: Optional[str] = Field(None, max_length=500)
+    version: int = 1
 
-    #customer name format validation
-    @field_validator("customer_name")
-    def valid_name(cls, value):
-        if not re.match(r"^[A-Za-z\s'-]+$", value):
-            logger.error(f"Invalid customer name format: {value}")
-            raise ValueError("Customer name should contain only letters and spaces.")
-        return value
+    @field_validator("customer_email")
+    def validate_email_field(cls, v):
+        try:
+            validate_email(v)
+        except EmailNotValidError:
+            raise ValueError("Invalid email format")
+        return v
 
-    #do not allow past dates
     @field_validator("date")
-    def prevent_past_date(cls, value):
-        if value < date.today():
-            logger.error(f"Attempted to book past date: {value}")
-            raise ValueError("Cannot book past dates!")
-        return value
+    def validate_future_date(cls, v):
+        if v < date.today():
+            raise ValueError("Date must be in the future")
+        return v
 
-    #restrict time to 08:00–20:00 for real-world booking
     @field_validator("time")
-    def valid_time_range(cls, value):
-        if value.tzinfo is not None:
-            value = value.replace(tzinfo=None)
-
-        if value < time(8, 0) or value > time(20, 0):#8:00AM to 8:00PM
-            logger.error(f"Attempted to book outside allowed hours: {value}")
-            raise ValueError("Booking allowed only between 08:00 and 20:00")
-        return value
+    def validate_business_hours(cls, v):
+        if v.tzinfo is not None:
+            v = v.replace(tzinfo=None)
+        if v < time(8, 0) or v > time(20, 0):
+            raise ValueError("Time must be between 08:00 and 20:00")
+        return v
