@@ -4,9 +4,9 @@ from datetime import date, time
 from email_validator import validate_email, EmailNotValidError
 
 class Booking(BaseModel):
-    customer_name: str = Field(..., min_length=2, max_length=100, pattern=r"^[A-Za-z]+([ '-][A-Za-z]+)*$")
+    customer_name: str = Field(..., min_length=2, max_length=100)
     customer_email: str = Field(..., max_length=255)
-    customer_phone: str = Field(..., max_length=15, pattern=r"^\+?[1-9]\d{9,14}$")
+    customer_phone: str = Field(..., max_length=15, pattern=r"^\+?[1-9]\d{9}$")
     date: date
     time: time
     description: Optional[str] = Field(None, max_length=500)
