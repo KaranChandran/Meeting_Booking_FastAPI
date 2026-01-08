@@ -1,4 +1,4 @@
-#Meeting Booking FastAPI
+##Meeting Booking FastAPI
 
 A **simple Meeting Booking Management API** built with **FastAPI** and **SQLite**, designed to help users schedule meetings with **proper date and time validation**. It ensures meetings **cannot be booked in the past** or **outside working hours (08:00–20:00)** — perfect for a basic scheduler backend. ([GitHub][1])
 
@@ -117,8 +117,6 @@ To run tests (if tests are included):
 ```bash
 pytest
 ```
-
-This will execute all tests for your API. Ensure your virtual environment is activated. ([GitHub][1])
 
 ---
 
