@@ -1,6 +1,6 @@
 ##Meeting Booking FastAPI
 
-A **simple Meeting Booking Management API** built with **FastAPI** and **SQLite**, designed to help users schedule meetings with **proper date and time validation**. It ensures meetings **cannot be booked in the past** or **outside working hours (08:00–20:00)** — perfect for a basic scheduler backend. ([GitHub][1])
+A **simple Meeting Booking Management API** built with **FastAPI** and **SQLite**, designed to help users schedule meetings with **proper date and time validation**. It ensures meetings **cannot be booked in the past** or **outside working hours (08:00–20:00)** — perfect for a basic scheduler backend.
 
 ---
 
@@ -34,7 +34,7 @@ Once running locally, you can try out the interactive API docs:
 * **Swagger UI** — `http://127.0.0.1:8000/docs`
 * **Redoc** — `http://127.0.0.1:8000/redoc`
 
-These interfaces let you test all API endpoints without external tools. ([GitHub][1])
+These interfaces let you test all API endpoints without external tools.
 
 ---
 
